@@ -12,7 +12,7 @@
     const CREATOR_GUIDES_URL = 'https://guides.cosmiq.gg/';
     const COMMUNITY_DISCORD_URL = 'https://discord.cosmiq.gg/';
     const YOUTUBE_GUIDES_URL = 'https://www.youtube.com/@CosmiqGG';
-    const PROJECT_REPOSITORY_URL = 'https://github.com/CosmiqGG/Cosmiq-Creator';
+    const PROJECT_REPOSITORY_URL = 'https://github.com/CosmiqGG/cosmiq-cosmetic-creator';
     const FORMAT_BANNER_FILE = 'temp_title.png';
     const BASE_TEMPLATE_FILE = 'CosmiqPlayerTemplate.bbmodel';
     const BASE_TEMPLATE_SHA256 = '769bad284e181e699278b91aada6a74bd63a2a61e0c201c5772a5206644e1505';
@@ -17302,6 +17302,7 @@
             version: PLUGIN_VERSION,
             min_version: '5.0.0',
             variant: 'both',
+            tags: ['Minecraft: Java Edition'],
             await_loading: true,
             contributes: {
                 formats: [FORMAT_ID]
