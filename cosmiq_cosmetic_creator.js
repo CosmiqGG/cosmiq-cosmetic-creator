@@ -17294,7 +17294,6 @@
             author: PLUGIN_AUTHOR,
             creation_date: PLUGIN_CREATION_DATE,
             description: 'Create anchored accessories and editable numbered multi-actor emote scenes.',
-            about: PLUGIN_ABOUT,
             website: PROJECT_WEBSITE_URL,
             repository: PROJECT_REPOSITORY_URL,
             bug_tracker: PROJECT_REPOSITORY_URL + '/issues',
