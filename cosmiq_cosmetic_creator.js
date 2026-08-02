@@ -3843,13 +3843,18 @@
     const COSMIQ_LOCAL_ID_PATTERN = /^[a-z][a-z0-9._-]{0,63}$/;
     const COSMIQ_BUILTIN_ID_PATTERN = /^cosmiq:[a-z0-9._/-]{1,127}$/;
 
-    class CosmiqValidationError extends Error {
-        constructor(code, message, location) {
-            super(code + ': ' + message);
-            this.name = 'CosmiqValidationError';
-            this.code = code;
-            this.location = location || null;
+    function CosmiqValidationError(code, message, location) {
+        const instance = new Error(code + ': ' + message);
+        instance.name = 'CosmiqValidationError';
+        instance.code = code;
+        instance.location = location || null;
+        if (typeof Object.setPrototypeOf === 'function') {
+            if (!(CosmiqValidationError.prototype instanceof Error)) {
+                Object.setPrototypeOf(CosmiqValidationError.prototype, Error.prototype);
+            }
+            Object.setPrototypeOf(instance, CosmiqValidationError.prototype);
         }
+        return instance;
     }
 
     function cosmiqFail(code, message, location) {
@@ -17568,7 +17573,7 @@
         registerBlockbenchPlugin: registerBlockbenchPlugin
     };
 
-    if (typeof module !== 'undefined' && module.exports) {
+    if (typeof module === 'object' && module && module.exports) {
         module.exports = api;
     }
     if (typeof Plugin !== 'undefined' && typeof Blockbench !== 'undefined') {
