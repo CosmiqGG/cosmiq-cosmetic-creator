@@ -21150,6 +21150,53 @@
             if (camera.updateProjectionMatrix) camera.updateProjectionMatrix();
             fitted = true;
         }
+        function render() {
+            if (disposed || !preview) return false;
+            if (!sameProject()) { dispose('Preview closed because the active project changed.'); return false; }
+            const restore = [];
+            try {
+                rememberScene(restore);
+                rememberProperty(restore, timeline, 'time');
+                rememberProperty(restore, animator, '_last_values');
+                rememberRecord(restore, animator._last_values, true);
+                const parser = animator.MolangParser;
+                if (parser) ['context', 'variables'].forEach(function (key) {
+                    rememberProperty(restore, parser, key);
+                    rememberRecord(restore, parser[key], key === 'variables');
+                });
+                const facades = plan.clips.map(function (clip) {
+                    const animation = animationApi.all.find(function (item) { return item.uuid === clip.uuid; });
+                    const facade = Object.create(animation);
+                    facade.animators = Object.assign({}, animation.animators);
+                    delete facade.animators.effects;
+                    Object.values(facade.animators).forEach(function (track) {
+                        ['group', 'element'].forEach(function (key) { rememberProperty(restore, track, key); });
+                    });
+                    facade.getBoneAnimator = function (node) { return this.animators[node.uuid]; };
+                    return facade;
+                });
+                timeline.time = elapsed;
+                // Native stackAnimations resets particles even without effect tracks.
+                // Suppress only that synchronous call; never touch the particle registry.
+                rememberProperty(restore, animator, 'resetParticles');
+                animator.resetParticles = function () {};
+                animator.showDefaultPose(true);
+                animator.stackAnimations(facades, false);
+                if (animator.displayMeshDeformation) animator.displayMeshDeformation();
+                fitCamera();
+                nativeRender.call(preview);
+                return true;
+            } finally {
+                // The canvas retains its pixels; the shared editor scene/time never retains our pose.
+                for (let index = restore.length - 1; index >= 0; index--) restore[index]();
+            }
+        }
+        function guardedRender() {
+            try { return render(); } catch (error) {
+                dispose('Live 3D preview is unavailable: ' + (error && error.message || 'native renderer failed'));
+                return false;
+            }
+        }
         return {plan: plan, mount: function () { notify(); return false; },
             dispose: function () { disposed = true; notify(); }, getState: state,
             toggle: function () {}, restart: function () {}};
