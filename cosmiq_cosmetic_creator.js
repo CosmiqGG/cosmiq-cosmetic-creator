@@ -12793,6 +12793,13 @@
             exposed: false,
             condition: condition
         });
+        addProperty(ModelProject, 'enum', 'cosmiq_arm_side_mode', {
+            label: 'Left / Right Arm Authoring',
+            description: 'Authoring intent only: same model on both sides, or separate models. Does not duplicate geometry or change arm-width fit.',
+            values: ['unconfigured', 'shared', 'separate'],
+            default: 'unconfigured',
+            condition: condition
+        });
         addProperty(ModelProject, 'number', 'cosmiq_source_revision', {
             default: 1,
             exposed: false,
@@ -13610,6 +13617,10 @@
     }
 
     function onCreateUndoSave(event) {
+        if (event && event.save && event.aspects && event.aspects.cosmiq_conversion) {
+            event.save.cosmiq_conversion = conversionProjectState(Project);
+            return;
+        }
         if (!isCosmiqProject() || !event || !event.save || !event.aspects) {
             return;
         }
@@ -13628,6 +13639,10 @@
     }
 
     function onLoadUndoSave(event) {
+        if (event && event.save && event.save.cosmiq_conversion) {
+            restoreConversionProjectState(event.save.cosmiq_conversion);
+            return;
+        }
         if (!isCosmiqProject() || !event || !event.save || !event.save.cosmiq_authoring) {
             return;
         }
@@ -13639,6 +13654,10 @@
     }
 
     function onRelevantEditorChange(event) {
+        if (event && event.aspects && event.aspects.cosmiq_conversion) {
+            schedulePanelRefresh();
+            return;
+        }
         if (isCosmiqProject() && event && event.aspects && (
             event.aspects.cosmiq_authoring || event.aspects.animations ||
             event.aspects.elements || event.aspects.outliner ||
