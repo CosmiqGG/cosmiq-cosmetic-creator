@@ -20906,6 +20906,86 @@
         return Promise.reject(new Error('Clipboard access is unavailable.'));
     }
 
+    // A review chooses representative authored clips, not a declarative-logic simulation.
+    // Keep this seam pure: native classes, selection and clocks belong to the session below.
+    function emoteExportPreviewPlan(metadata, animations, selectedUuid) {
+        metadata = metadata || {};
+        const bindings = metadata.animationBindings || {};
+        const nodes = metadata.nodeBindings || {};
+        const initial = metadata.logic && (metadata.logic.states || []).find(function (state) {
+            return state.id === metadata.logic.initialState;
+        });
+        const preferred = new Set((initial && initial.rules || []).filter(function (rule) {
+            return rule.event && rule.event.type === 'enter' && rule.action && rule.action.type === 'play_animation';
+        }).map(function (rule) { return rule.action.clipId; }));
+        const nativeByUuid = new Map((animations || []).map(function (animation) { return [animation.uuid, animation]; }));
+        const candidates = Object.keys(bindings).sort().map(function (uuid) {
+            const binding = bindings[uuid];
+            const animation = nativeByUuid.get(uuid);
+            if (!binding || !animation || !animationHasPackageContent(binding)) return null;
+            const duration = Number(animation.length);
+            if (!Number.isFinite(duration) || duration < 0) return null;
+            // Actual authored channels disambiguate scene-wide lanes from props-only lanes.
+            const rawTargets = Object.keys(animation.animators || {}).filter(function (key) {
+                const track = animation.animators[key];
+                return key !== 'effects' && track && Object.keys(track).some(function (channel) {
+                    return Array.isArray(track[channel]) && track[channel].length &&
+                        track[channel].some(function (frame) { return frame && typeof frame === 'object'; });
+                });
+            });
+            const targets = Array.from(new Set(animation.animators ? rawTargets : binding.targetUuids || [])).sort();
+            const actors = new Set(targets.map(function (target) {
+                return Number(nodes[target] && nodes[target].actorIndex) || 0;
+            }).filter(Boolean));
+            if (binding.scope === EMOTE_ANIMATION_SCOPES.ACTOR && Number(binding.actorIndex) > 0) {
+                actors.add(Number(binding.actorIndex));
+            }
+            const selectedActor = uuid === selectedUuid && binding.scope === EMOTE_ANIMATION_SCOPES.ACTOR;
+            return {
+                uuid: uuid, clipId: binding.id, scope: binding.scope,
+                actorIndexes: Array.from(actors).sort(function (a, b) { return a - b; }),
+                targetUuids: targets, durationSeconds: duration,
+                loop: animation.loop || binding.loop && binding.loop.mode || 'once',
+                priority: selectedActor ? 0 : preferred.has(binding.id) ? 1 : 2
+            };
+        }).filter(Boolean).sort(function (a, b) {
+            return a.priority - b.priority || String(a.clipId).localeCompare(String(b.clipId)) ||
+                a.uuid.localeCompare(b.uuid);
+        });
+        const usedActors = new Set();
+        const usedTargets = new Set();
+        const clips = [];
+        function ancestry(uuid) {
+            const result = new Set();
+            while (uuid && !result.has(uuid)) {
+                result.add(uuid);
+                uuid = nodes[uuid] && nodes[uuid].parentUuid;
+            }
+            return result;
+        }
+        candidates.forEach(function (clip) {
+            if (clip.actorIndexes.some(function (actor) { return usedActors.has(actor); })) return;
+            if (clip.targetUuids.some(function (target) {
+                return Array.from(usedTargets).some(function (used) {
+                    return ancestry(target).has(used) || ancestry(used).has(target);
+                });
+            })) return;
+            // Effects-only clips have no geometry to preview; no audio/particles are evaluated.
+            if (!clip.targetUuids.length) return;
+            clips.push(clip);
+            clip.actorIndexes.forEach(function (actor) { usedActors.add(actor); });
+            clip.targetUuids.forEach(function (target) { usedTargets.add(target); });
+        });
+        return {
+            clips: clips,
+            actorCount: (metadata.actors || []).length,
+            cycleSeconds: Math.max(0, ...clips.map(function (clip) { return clip.durationSeconds; }))
+        };
+    }
+
+    const emoteExportPreviewSessions = new Set();
+    let emoteExportPreviewSerial = 0;
+
     function exportReviewComponent(candidate) {
         const anchorIds = detectedAccessoryAnchorIds(candidate);
         const attachmentLabels = anchorIds.map(function (anchorId) {
