@@ -21221,9 +21221,72 @@
             }
             if (!disposed) frame = raf(tick);
         }
-        return {plan: plan, mount: function () { notify(); return false; },
-            dispose: function () { disposed = true; notify(); }, getState: state,
-            toggle: function () {}, restart: function () {}};
+        function mount(container) {
+            if (disposed || mounted) return mounted && !disposed;
+            if (!container || !PreviewClass || !animationApi || !Array.isArray(animationApi.all) ||
+                !timeline || !animator || !animator.showDefaultPose || !animator.stackAnimations || !raf || !caf) {
+                notify();
+                return false;
+            }
+            host = container;
+            try {
+                previousPreview = PreviewClass.selected;
+                preview = new PreviewClass({id: 'cosmiq_emote_export_' + (++emoteExportPreviewSerial), offscreen: true});
+                nativeRender = preview.render;
+                // Blockbench's global render loop must not overwrite our sampled pixels.
+                preview.render = function () {};
+                if (preview.controls) preview.controls.enabled = false;
+                const node = preview.node || preview.canvas;
+                if (!node || typeof nativeRender !== 'function') throw new Error('Native viewport is unavailable.');
+                if (node.style) node.style.pointerEvents = 'none';
+                host.appendChild(node);
+                if (preview.resize) preview.resize();
+                mounted = true;
+                playing = plan.cycleSeconds > 0;
+                message = plan.clips.length ? 'Authored clip preview · all visible actors and props' : 'Static scene · no authored motion';
+                emoteExportPreviewSessions.add(session);
+                if (!guardedRender()) return false;
+                if (Observer) {
+                    observer = new Observer(function () {
+                        if (disposed) return;
+                        try {
+                            if (preview.resize) preview.resize();
+                            fitted = false;
+                            guardedRender();
+                        } catch (error) { dispose('Live 3D preview is unavailable: viewport resize failed.'); }
+                    });
+                    observer.observe(host);
+                }
+                frame = raf(tick);
+                notify();
+                return true;
+            } catch (error) {
+                dispose('Live 3D preview is unavailable: ' + (error && error.message || 'native renderer failed'));
+                return false;
+            }
+        }
+        const session = {
+            plan: plan, mount: mount, dispose: dispose, getState: state,
+            toggle: function () {
+                if (disposed || !mounted) return;
+                if (!playing && !plan.clips.some(function (clip) { return clip.loop === 'loop'; }) &&
+                    elapsed >= plan.cycleSeconds) elapsed = 0;
+                playing = !playing && plan.cycleSeconds > 0;
+                lastTime = null;
+                lastRenderTime = null;
+                notify();
+            },
+            restart: function () {
+                if (disposed || !mounted) return;
+                elapsed = 0;
+                lastTime = null;
+                lastRenderTime = null;
+                playing = plan.cycleSeconds > 0;
+                guardedRender();
+                notify();
+            }
+        };
+        return session;
     }
 
     function exportReviewComponent(candidate) {
