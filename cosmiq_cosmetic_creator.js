@@ -22258,6 +22258,49 @@
         if (typeof Canvas !== 'undefined' && typeof Canvas.updateAll === 'function') Canvas.updateAll();
     }
 
+    function applyProjectConversion(plan, destination) {
+        if (!canConvertProject() || Project !== destination) throw new Error('The active project changed. Start conversion again.');
+        const format = typeof Formats !== 'undefined' && Formats[FORMAT_ID];
+        if (!format || typeof format.select !== 'function' || !Formats[Format.id] ||
+            typeof Formats[Format.id].select !== 'function' ||
+            typeof Undo === 'undefined' || !Undo.initEdit || !Undo.finishEdit || !Undo.cancelEdit ||
+            typeof Group === 'undefined' || typeof Texture === 'undefined' ||
+            typeof Outliner === 'undefined' || !Array.isArray(Outliner.root) ||
+            typeof OutlinerElement === 'undefined' || !OutlinerElement.fromSave ||
+            typeof Blockbench === 'undefined' || !Blockbench.Animation) {
+            throw new Error('This Blockbench build lacks the reversible in-place conversion adapter.');
+        }
+        plan.elements.forEach(function (source) {
+            if (!OutlinerElement.types || !OutlinerElement.types[source.type || 'cube']) {
+                throw new Error('This Blockbench build cannot create ' + source.type + ' elements safely.');
+            }
+        });
+        const roots = Outliner.root.slice();
+        if (roots.some(function (node) { return !node || typeof node.addTo !== 'function'; })) {
+            throw new Error('This model contains unsupported root nodes.');
+        }
+        function checkTextureBindings(children) {
+            (children || []).forEach(function (node) {
+                Object.values(node.faces || {}).forEach(function (face) {
+                    const effective = typeof face.getTexture === 'function' ? face.getTexture() : null;
+                    if (effective && effective.uuid && effective.uuid !== face.texture) {
+                        throw new Error('This model uses implicit or group texture bindings. Assign its effective textures explicitly before converting.');
+                    }
+                });
+                checkTextureBindings(node.children);
+            });
+        }
+        checkTextureBindings(roots);
+        const previous = conversionProjectState(Project);
+        const uvSizes = Texture.all.map(function (texture) {
+            return {texture: texture, width: typeof texture.getUVWidth === 'function' ? texture.getUVWidth() : Project.texture_width,
+                height: typeof texture.getUVHeight === 'function' ? texture.getUVHeight() : Project.texture_height};
+        });
+        const aspects = {elements: [], groups: [], textures: Texture.all.slice(), animations: [],
+            outliner: true, selection: true, cosmiq_conversion: true};
+        throw new Error('The internal conversion adapter is not available yet.');
+    }
+
     function applyAccessoryMerge(plan) {
         if (!isCosmiqCosmeticProject()) throw new Error('Open a Cosmiq Accessory project before importing.');
         const targets = plan.placements.map(function (placement) {
