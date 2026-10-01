@@ -22200,6 +22200,64 @@
             targetUuid: target.uuid, projectFields: projectFields};
     }
 
+    function conversionProjectState(project) {
+        const fields = {};
+        // Native ModelProject.name and some UV fields are non-enumerable accessors.
+        const keys = ['name', 'saved', 'box_uv', 'texture_width', 'texture_height'].concat(
+            Object.keys(project).filter(function (key) { return key === 'cosmiq' || key.indexOf('cosmiq_') === 0; }));
+        keys.forEach(function (key) { fields[key] = project[key] === undefined ? undefined : cosmiqClone(project[key]); });
+        const nodeFields = {};
+        const nodes = (typeof Group !== 'undefined' ? Group.all : []).concat(
+            typeof Outliner !== 'undefined' && Array.isArray(Outliner.elements) ? Outliner.elements : [],
+            typeof Texture !== 'undefined' ? Texture.all : [],
+            typeof Blockbench !== 'undefined' && Blockbench.Animation ? Blockbench.Animation.all : []);
+        // Include hierarchy elements as well: some versions do not expose Outliner.elements.
+        function walk(children) {
+            (children || []).forEach(function (node) { if (nodes.indexOf(node) === -1) nodes.push(node); walk(node.children); });
+        }
+        if (typeof Outliner !== 'undefined') walk(Outliner.root);
+        nodes.forEach(function (node) {
+            const values = {};
+            Object.keys(node).filter(function (key) {
+                return key.indexOf('cosmiq_') === 0 || key === 'uv_width' || key === 'uv_height';
+            }).forEach(function (key) { values[key] = node[key] === undefined ? undefined : cosmiqClone(node[key]); });
+            nodeFields[node.uuid] = values;
+        });
+        return {formatId: Format.id, fields: fields, nodeFields: nodeFields};
+    }
+
+    function restoreConversionProjectState(state) {
+        const format = typeof Formats !== 'undefined' && Formats[state.formatId];
+        if (!format || typeof format.select !== 'function') throw new Error('The original model format is no longer available.');
+        format.select();
+        Object.keys(Project).filter(function (key) {
+            return key === 'cosmiq' || key.indexOf('cosmiq_') === 0;
+        }).forEach(function (key) { if (!Object.prototype.hasOwnProperty.call(state.fields, key)) delete Project[key]; });
+        Object.keys(state.fields).forEach(function (key) { Project[key] = state.fields[key] === undefined ? undefined : cosmiqClone(state.fields[key]); });
+        // Native redo constructs nodes before this late event, while the old format is
+        // active. Property.merge skips format-conditioned Cosmiq fields in that phase.
+        const byId = new Map();
+        function walk(children) {
+            (children || []).forEach(function (node) { byId.set(node.uuid, node); walk(node.children); });
+        }
+        if (typeof Outliner !== 'undefined') walk(Outliner.root);
+        (typeof Texture !== 'undefined' ? Texture.all : []).concat(
+            typeof Blockbench !== 'undefined' && Blockbench.Animation ? Blockbench.Animation.all : [])
+            .forEach(function (node) { byId.set(node.uuid, node); });
+        Object.keys(state.nodeFields || {}).forEach(function (uuid) {
+            const node = byId.get(uuid);
+            if (!node) return;
+            const values = state.nodeFields[uuid];
+            Object.keys(node).filter(function (key) {
+                return key.indexOf('cosmiq_') === 0 || key === 'uv_width' || key === 'uv_height';
+            }).forEach(function (key) { if (!Object.prototype.hasOwnProperty.call(values, key)) delete node[key]; });
+            Object.keys(values).forEach(function (key) {
+                node[key] = values[key] === undefined ? undefined : cosmiqClone(values[key]);
+            });
+        });
+        if (typeof Canvas !== 'undefined' && typeof Canvas.updateAll === 'function') Canvas.updateAll();
+    }
+
     function applyAccessoryMerge(plan) {
         if (!isCosmiqCosmeticProject()) throw new Error('Open a Cosmiq Accessory project before importing.');
         const targets = plan.placements.map(function (placement) {
