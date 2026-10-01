@@ -22399,6 +22399,78 @@
         return true;
     }
 
+    async function convertCurrentProject(destination, kind, options, loadTemplate) {
+        if (!canConvertProject() || Project !== destination) throw new Error('The active project changed. Start conversion again.');
+        const originalFormat = Format;
+        const template = await (loadTemplate || loadBaseTemplateJson)();
+        if (!canConvertProject() || Project !== destination || Format !== originalFormat) {
+            throw new Error('The active project changed. Start conversion again.');
+        }
+        if (typeof Codecs === 'undefined' || !Codecs.project || !Codecs.project.compile) {
+            throw new Error('This Blockbench build cannot inspect the current model safely.');
+        }
+        if (typeof Texture !== 'undefined' && Texture.all.some(function (texture) { return texture.frameCount > 1; })) {
+            throw new Error('Animated textures are not supported by conversion.');
+        }
+        const source = Codecs.project.compile({raw: true});
+        return applyProjectConversion(prepareProjectConversion(source, kind, options, template), destination);
+    }
+
+    function convertToCosmiqAction() {
+        function report(error) {
+            if (typeof Blockbench !== 'undefined' && Blockbench.showMessageBox) {
+                Blockbench.showMessageBox({title: 'Convert to Cosmiq', message: error.message});
+            }
+        }
+        if (!canConvertProject() || typeof Dialog === 'undefined') {
+            report(new Error('Open a non-Cosmiq model before converting.'));
+            return false;
+        }
+        const destination = Project;
+        const sourceFormat = Format;
+        const kindDialog = new Dialog('cosmiq_conversion_type', {
+            title: 'Convert to Cosmiq',
+            lines: ['Your current model stays in this project. Accessory places it under one body attachment. Emote adds a player rig and keeps your model as an Object Actor under Props; existing clips are not retargeted to player bones.'],
+            form: {kind: {label: 'Convert as', type: 'select', options: {cosmetic: 'Accessory', emote: 'Emote'}, value: 'cosmetic'}},
+            buttons: ['Continue', 'Cancel'],
+            onConfirm: function (choice) {
+                if (!canConvertProject() || Project !== destination || Format !== sourceFormat) {
+                    report(new Error('The active project changed. Start conversion again.'));
+                    return;
+                }
+                kindDialog.hide();
+                const accessory = choice.kind === PROJECT_KINDS.COSMETIC;
+                const form = {
+                    name: {label: accessory ? 'Accessory name' : 'Emote name', type: 'text', value: destination.name || 'Converted model'},
+                    visibleBody: {label: 'Authoring body', type: 'select', options: {wide: 'Wide', slim: 'Slim'}, value: 'wide'}
+                };
+                if (accessory) {
+                    const attachments = {};
+                    TEMPLATE_ATTACHMENT_POINTS.forEach(function (point) { attachments[point.anchorId] = point.label; });
+                    form.anchorId = {label: 'Attach to body part', type: 'select', options: attachments, value: 'cosmiq:player/head'};
+                    form.armSideMode = {label: 'Same model for right and left arms?', type: 'select',
+                        options: {shared: 'Yes — same model', separate: 'No — separate models'}, value: 'shared',
+                        condition: function (result) { return /_arm$/.test(result.anchorId || ''); }};
+                }
+                const setupDialog = new Dialog('cosmiq_conversion_setup', {
+                    title: accessory ? 'Convert Accessory' : 'Convert Emote',
+                    lines: [accessory
+                        ? 'Coordinates and animations stay unchanged. Only the selected side receives your model; the left/right answer records authoring intent, without duplicating or mirroring. Wide/Slim width fit is configured separately at export.'
+                        : 'Your model becomes one Object Actor in Props alongside the new player rig. Its geometry and existing animation tracks are preserved, not converted into player-bone animation. Review clip scopes and export validation afterward.'],
+                    form: form, buttons: ['Convert', 'Cancel'],
+                    onConfirm: function (settings) {
+                        if (Format !== sourceFormat) { report(new Error('The active project changed. Start conversion again.')); return; }
+                        setupDialog.hide();
+                        return convertCurrentProject(destination, choice.kind, settings).catch(report);
+                    }
+                });
+                setupDialog.show();
+            }
+        });
+        kindDialog.show();
+        return true;
+    }
+
     function applyAccessoryMerge(plan) {
         if (!isCosmiqCosmeticProject()) throw new Error('Open a Cosmiq Accessory project before importing.');
         const targets = plan.placements.map(function (placement) {
@@ -22805,6 +22877,14 @@
             return;
         }
         cosmiqMenu = new BarMenu('cosmiq', [
+            {
+                id: 'cosmiq_menu_convert',
+                name: 'Convert to Cosmiq',
+                description: 'Add the Cosmiq template around this model without replacing your work.',
+                icon: 'transform',
+                condition: canConvertProject,
+                click: convertToCosmiqAction
+            },
             {
                 id: 'cosmiq_menu_panel',
                 name: 'Show Cosmiq Panel',
