@@ -22076,6 +22076,82 @@
         return notes.length ? ' ' + notes.join(' ') : '';
     }
 
+    function canConvertProject() {
+        return typeof Project !== 'undefined' && !!Project && typeof Format !== 'undefined' &&
+            !!Format && Format.id !== FORMAT_ID;
+    }
+
+    // A delta, not a rewritten source: original nodes, clips and textures retain identity.
+    function prepareProjectConversion(current, kind, options, pristineTemplate) {
+        options = options || {};
+        if (!current || !current.meta || current.meta.model_format === FORMAT_ID) {
+            throw new Error('Convert an unconverted model, not an existing Cosmiq project.');
+        }
+        if (kind !== PROJECT_KINDS.COSMETIC && kind !== PROJECT_KINDS.EMOTE) throw new Error('Choose Accessory or Emote.');
+        const name = normalizeCreationName(options.name);
+        if (!name || name.length > 64 || containsForbiddenControl(String(options.name), false)) {
+            throw new Error('Enter a readable name from 1 through 64 characters.');
+        }
+        if (options.visibleBody !== 'wide' && options.visibleBody !== 'slim') throw new Error('Choose the Wide or Slim authoring body.');
+        if (current.display && Object.keys(current.display).length) {
+            throw new Error('Display transforms cannot be retained in the Cosmiq workspace. Bake them explicitly before converting.');
+        }
+        if ((current.textures || []).some(function (texture) {
+            return Number(texture.frameCount || texture.frame_count || 1) > 1;
+        })) throw new Error('Animated textures are not supported by conversion.');
+        if ((current.elements || []).some(function (element) {
+            return ['cube', 'mesh', 'locator', 'armature', 'armature_bone'].indexOf(element.type || 'cube') === -1;
+        })) throw new Error('This model contains unsupported custom elements. Conversion made no changes.');
+        const incoming = annotateBaseTemplate(pristineTemplate, kind, {name: name, visibleBody: options.visibleBody});
+        if (kind === PROJECT_KINDS.COSMETIC) {
+            const records = incoming.groups.map(function (group) {
+                return {uuid: group.uuid, role: group.cosmiq_role, anchorId: group.cosmiq_anchor, origin: group.origin};
+            });
+            legacyAnchorNormalizationPlan(records).forEach(function (change) {
+                const group = incoming.groups.find(function (candidate) { return candidate.uuid === change.uuid; });
+                group.cosmiq_anchor = change.anchorId;
+                group.origin = change.origin.slice();
+            });
+        }
+        const occupied = new Set();
+        function collectIds(value, ids) {
+            if (!value || typeof value !== 'object') return;
+            if (typeof value.uuid === 'string') ids.add(value.uuid);
+            Object.keys(value).forEach(function (key) { collectIds(value[key], ids); });
+        }
+        collectIds(current, occupied);
+        const incomingIds = new Set();
+        collectIds(incoming, incomingIds);
+        incomingIds.forEach(function (id) {
+            if (occupied.has(id)) throw new Error('The source and template share an ID. Convert a model without template content; nothing was changed.');
+        });
+        const meshPrefixes = new Set((current.elements || []).filter(function (node) {
+            return node.type === 'mesh';
+        }).map(function (node) { return String(node.uuid).slice(0, 6); }));
+        if ((incoming.elements || []).some(function (node) {
+            return node.type === 'mesh' && meshPrefixes.has(String(node.uuid).slice(0, 6));
+        })) throw new Error('The source and template share a mesh weight ID prefix. Nothing was changed.');
+        let counter = 1;
+        function newId() {
+            let id;
+            do { id = 'c05a1c00-0000-4000-8000-' + String(counter++).padStart(12, '0'); }
+            while (occupied.has(id) || incomingIds.has(id));
+            incomingIds.add(id);
+            return id;
+        }
+        function branch(uuid, entries) {
+            for (const entry of entries || []) {
+                if (entry && typeof entry === 'object') {
+                    if (entry.uuid === uuid) return entry;
+                    const found = branch(uuid, entry.children);
+                    if (found) return found;
+                }
+            }
+            return null;
+        }
+        throw new Error('The internal conversion adapter is not available yet.');
+    }
+
     function applyAccessoryMerge(plan) {
         if (!isCosmiqCosmeticProject()) throw new Error('Open a Cosmiq Accessory project before importing.');
         const targets = plan.placements.map(function (placement) {
