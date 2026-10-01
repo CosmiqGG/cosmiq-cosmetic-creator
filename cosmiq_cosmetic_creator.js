@@ -22298,7 +22298,86 @@
         });
         const aspects = {elements: [], groups: [], textures: Texture.all.slice(), animations: [],
             outliner: true, selection: true, cosmiq_conversion: true};
-        throw new Error('The internal conversion adapter is not available yet.');
+        Undo.initEdit(aspects);
+        try {
+            format.select();
+            // select(), unlike convertTo(), does not rewrite geometry or clear Undo history.
+            ['box_uv', 'texture_width', 'texture_height'].forEach(function (key) {
+                if (Object.prototype.hasOwnProperty.call(previous.fields, key)) Project[key] = previous.fields[key];
+            });
+            uvSizes.forEach(function (record) {
+                record.texture.uv_width = record.width;
+                record.texture.uv_height = record.height;
+            });
+            Object.assign(Project, cosmiqClone(plan.projectFields));
+            plan.textures.forEach(function (source) {
+                const texture = new Texture(source, source.uuid);
+                aspects.textures.push(texture);
+                let id = 0;
+                while (Texture.all.some(function (candidate) { return String(candidate.id) === String(id); })) id++;
+                texture.id = String(id);
+                texture.fromDataURL(source.source).add(false);
+            });
+            const nodes = new Map();
+            plan.groups.forEach(function (source) {
+                const group = new Group(source, source.uuid);
+                aspects.groups.push(group);
+                group.init();
+                nodes.set(source.uuid, group);
+            });
+            plan.elements.forEach(function (source) {
+                const element = OutlinerElement.fromSave(source, true);
+                if (element) aspects.elements.push(element);
+                if (!element || element.uuid !== source.uuid) throw new Error('The element factory did not preserve template identity.');
+                nodes.set(source.uuid, element);
+            });
+            function attach(entry, parent) {
+                const node = nodes.get(typeof entry === 'string' ? entry : entry.uuid);
+                if (!node) throw new Error('The template hierarchy references a missing node.');
+                node.addTo(parent);
+                if (node.parent !== parent) throw new Error('Blockbench refused the template hierarchy.');
+                if (typeof entry === 'object') (entry.children || []).forEach(function (child) { attach(child, node); });
+            }
+            plan.outliner.forEach(function (entry) { attach(entry, 'root'); });
+            const wrapper = nodes.get(plan.wrapperUuid);
+            roots.forEach(function (root) {
+                root.addTo(wrapper);
+                if (root.parent !== wrapper) throw new Error('This root cannot be placed in a Cosmiq folder.');
+            });
+            plan.animations.forEach(function (source) {
+                const animation = new Blockbench.Animation(source);
+                aspects.animations.push(animation);
+                animation.add(false);
+            });
+            // No name-convention adoption or edits to the existing animation objects.
+            const snapshot = liveSnapshot();
+            Project.cosmiq = (Project.cosmiq_project_kind === PROJECT_KINDS.EMOTE
+                ? buildEmoteSourceMetadata(snapshot) : buildSourceMetadata(snapshot)).metadata;
+            Project.saved = false;
+            if (typeof Canvas !== 'undefined') Canvas.updateAll();
+            Undo.finishEdit('Convert to Cosmiq', aspects);
+        } catch (error) {
+            // A native factory can throw after registering an object but before returning
+            // it. Include those partial additions in the reference save used by cancelEdit.
+            function trackPartial(nodes, list) {
+                (nodes || []).forEach(function (node) {
+                    const target = list || (node instanceof Group ? aspects.groups : aspects.elements);
+                    if (!Object.prototype.hasOwnProperty.call(previous.nodeFields, node.uuid) && target.indexOf(node) === -1) {
+                        target.push(node);
+                    }
+                    if (!list) trackPartial(node.children);
+                });
+            }
+            trackPartial(Outliner.root);
+            trackPartial(Outliner.elements);
+            trackPartial(Group.all, aspects.groups);
+            trackPartial(Texture.all, aspects.textures);
+            trackPartial(Blockbench.Animation.all, aspects.animations);
+            try { Undo.cancelEdit(true); }
+            finally { restoreConversionProjectState(previous); }
+            throw error;
+        }
+        return true;
     }
 
     function applyAccessoryMerge(plan) {
