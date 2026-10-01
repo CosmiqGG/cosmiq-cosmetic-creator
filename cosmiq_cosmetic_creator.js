@@ -21578,22 +21578,54 @@
         openCreatorExportReview(candidate, reviewTitle);
     }
 
-    function openCreatorExportReview(candidate, reviewTitle) {
+    function openCreatorExportReview(candidate, reviewTitle, runtimeOptions) {
+        const runtime = runtimeOptions || {};
+        const DialogClass = runtime.Dialog || Dialog;
+        const defer = runtime.setTimeout || setTimeout;
+        const performExport = runtime.performExport || performCreatorPackageExport;
         const capeComingSoon = candidate.kind === PROJECT_KINDS.CAPE;
-        activeDialog = new Dialog('cosmiq_export_review', {
+        let disposePreview = function () {};
+        let destroyed = false;
+        const dialog = new DialogClass('cosmiq_export_review', {
             title: reviewTitle,
             width: 760,
-            component: exportReviewComponent(candidate),
+            component: exportReviewComponent(candidate, {
+                runtime: runtime.previewRuntime,
+                createSession: runtime.createSession,
+                onDisposeReady: function (dispose) { disposePreview = dispose; }
+            }),
             buttons: capeComingSoon ? ['Close'] : ['Confirm & Export .bbmodel', 'Cancel'],
             confirmIndex: 0,
             cancelIndex: capeComingSoon ? 0 : 1,
             onConfirm: function () {
+                disposePreview();
                 if (capeComingSoon) return true;
-                setTimeout(function () { performCreatorPackageExport(candidate); }, 0);
+                defer(function () { performExport(candidate); }, 0);
                 return true;
-            }
+            },
+            onCancel: function () { disposePreview(); return true; },
+            onClose: function () { disposePreview(); }
         });
-        activeDialog.show();
+        const nativeHide = dialog.hide;
+        const nativeDelete = dialog.delete;
+        dialog.delete = function () {
+            disposePreview();
+            if (destroyed) return;
+            destroyed = true;
+            if (nativeDelete) return nativeDelete.apply(dialog, arguments);
+        };
+        dialog.hide = function () {
+            disposePreview();
+            try { if (nativeHide) return nativeHide.apply(dialog, arguments); }
+            finally {
+                // Native hide detaches DOM but does not destroy Vue. Delete only THIS
+                // review after its own stack has unwound; nested dialogs stay untouched.
+                dialog.delete();
+            }
+        };
+        activeDialog = dialog;
+        dialog.show();
+        return dialog;
     }
 
     function showCosmeticExportReview() {
