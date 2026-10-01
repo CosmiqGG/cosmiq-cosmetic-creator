@@ -13775,7 +13775,14 @@
     }
 
     function onSaveProject(event) {
-        if (!isCosmiqProject() || !event || !event.model) {
+        if (!isCosmiqProject() || typeof Project === 'undefined' || !Project || !event || !event.model) {
+            return;
+        }
+        if (event.options && event.options.cosmiq_source_backup === true) {
+            // A local backup must retain unfinished authoring state, not normalize it
+            // or require a valid runtime package before it can be saved.
+            event.model.cosmiq_project_kind = Project.cosmiq_project_kind;
+            if (Project.cosmiq !== undefined) event.model.cosmiq = cosmiqClone(Project.cosmiq);
             return;
         }
         const result = refreshMetadata(false);
@@ -21462,6 +21469,37 @@
         });
     }
 
+    function exportCreatorBackup() {
+        if (typeof Project === 'undefined' || !Project || !isCosmiqProject()) {
+            Blockbench.showMessageBox({title: 'Save Cosmiq Backup', message: 'Open a Cosmiq project before saving a backup.'});
+            return false;
+        }
+        try {
+            if (typeof Codecs === 'undefined' || !Codecs.project || typeof Codecs.project.compile !== 'function') {
+                throw new Error('This Blockbench build cannot compile an editable project backup.');
+            }
+            const model = Codecs.project.compile({
+                raw: true, bitmaps: true, backup: true, editor_state: true, cosmiq_source_backup: true
+            });
+            Blockbench.export({
+                type: 'Cosmiq Editable Backup',
+                extensions: [PACKAGE_EXTENSION],
+                name: packageFileName(Project.name, activeCosmiqProjectKind(), {backup: true}),
+                content: JSON.stringify(model, null, 2) + '\n',
+                savetype: 'text'
+            }, function () {
+                Blockbench.showQuickMessage('Saved an editable Cosmiq backup. This is not a validated runtime export.');
+            });
+            return true;
+        } catch (error) {
+            Blockbench.showMessageBox({
+                title: 'Could Not Save Cosmiq Backup',
+                message: error && error.message ? error.message : 'The editable backup could not be compiled.'
+            });
+            return false;
+        }
+    }
+
     function performCosmeticPackageExport(candidate) {
         performCreatorPackageExport(candidate || compileLiveCreatorExportCandidate());
     }
@@ -21993,6 +22031,14 @@
                 description: 'Review and export the active Cosmiq project.',
                 icon: 'inventory_2',
                 click: exportCosmiqProjectAction
+            },
+            {
+                id: 'cosmiq_menu_backup',
+                name: 'Save Backup',
+                description: 'Save an editable local copy, including unfinished projects that cannot be exported yet.',
+                icon: 'save',
+                condition: isCosmiqProject,
+                click: exportCreatorBackup
             }
         ], {
             name: 'Cosmiq',
