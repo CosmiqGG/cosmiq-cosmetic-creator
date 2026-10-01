@@ -20316,12 +20316,44 @@
         });
     }
 
-    function packageFileName(category) {
-        const safeName = String(category || 'cosmiq')
-            .trim()
-            .replace(/[<>:"/\\|?*\u0000-\u001f]+/g, '_')
-            .replace(/[. ]+$/g, '') || 'cosmiq';
-        return safeName;
+    function packageFileName(name, kind, options) {
+        const settings = options || {};
+        const letter = settings.backup === true ? 'z'
+            : kind === PROJECT_KINDS.EMOTE ? 'e'
+                : kind === PROJECT_KINDS.CAPE ? 'c'
+                    : normalizePlayerAppearance(settings.playerAppearance) ? 'm' : 'a';
+        const generatedSuffix = /_\d+\.\d+\.\d+(?:-[0-9A-Za-z.-]+)?(?:\+[0-9A-Za-z.-]+)?_[aecmz]$/i;
+        let base = String(name == null ? '' : name).trim().replace(/\.bbmodel$/i, '').trim();
+        if (generatedSuffix.test(base)) {
+            // An already-generated filename contains the creation name, not a UI title.
+            base = base.replace(generatedSuffix, '');
+        } else {
+            const categorySuffix = ' ' + creationCategoryLabel(kind);
+            if (base.toLowerCase().endsWith(categorySuffix.toLowerCase())) {
+                base = base.slice(0, -categorySuffix.length).trim();
+            }
+            base = base.replace(generatedSuffix, '');
+        }
+        base = base.replace(/[<>:"/\\|?*\u0000-\u001f\u007f-\u009f]+/g, '_')
+            .replace(/[\uD800-\uDFFF]/gu, '_')
+            .replace(/[. ]+$/g, '') || 'Untitled';
+        if (/^(?:con|prn|aux|nul|com[1-9\u00b9\u00b2\u00b3]|lpt[1-9\u00b9\u00b2\u00b3])(?:\.|$)/i.test(base)) {
+            base = '_' + base;
+        }
+        const suffix = '_' + PLUGIN_VERSION + '_' + letter;
+        const maximumBytes = 240 - suffix.length - PACKAGE_EXTENSION.length - 1;
+        let safeName = '';
+        let bytes = 0;
+        for (const character of base) {
+            const point = character.codePointAt(0);
+            const width = point <= 0x7f ? 1 : point <= 0x7ff ? 2 : point <= 0xffff ? 3 : 4;
+            if (bytes + width > maximumBytes) break;
+            safeName += character;
+            bytes += width;
+        }
+        safeName = safeName.replace(/[. ]+$/g, '') || 'Untitled';
+        // Blockbench.export appends its selected extension; this is an editable stem.
+        return safeName + suffix;
     }
 
     function escapeHtml(value) {
@@ -20712,7 +20744,11 @@
             assetKind: manifest.assetKind,
             draft: false,
             runtimeExportReady: kind !== PROJECT_KINDS.CAPE,
-            filename: packageFileName(manifest.assetKind),
+            filename: packageFileName(
+                rawInput && rawInput.name || packagedSnapshot.project.displayName || packagedSnapshot.project.name,
+                kind,
+                {playerAppearance: sourceResult.metadata.playerAppearance}
+            ),
             manifest: manifest,
             bbmodel: editableProject,
             snapshot: packagedSnapshot,
