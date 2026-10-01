@@ -3,7 +3,7 @@
 
     const PLUGIN_ID = 'cosmiq_cosmetic_creator';
     const FORMAT_ID = 'cosmiq_cosmetic';
-    const PLUGIN_VERSION = '2.0.1';
+    const PLUGIN_VERSION = '2.0.2';
     const PLUGIN_AUTHOR = 'Cosmiq Team';
     const PLUGIN_CREATION_DATE = '2026-08-01';
     const COSMIQ_PREVIEW_FILE_PREFIX = 'particles/';
@@ -23327,6 +23327,17 @@
     }
 
     const api = {
+        packageFileName: packageFileName,
+        performCreatorPackageExport: performCreatorPackageExport,
+        exportCreatorBackup: exportCreatorBackup,
+        onSaveProject: onSaveProject,
+        prepareProjectConversion: prepareProjectConversion,
+        canConvertProject: canConvertProject,
+        convertToCosmiqAction: convertToCosmiqAction,
+        convertCurrentProject: convertCurrentProject,
+        applyProjectConversion: applyProjectConversion,
+        onCreateUndoSave: onCreateUndoSave,
+        onLoadUndoSave: onLoadUndoSave,
         PLUGIN_ID: PLUGIN_ID,
         FORMAT_ID: FORMAT_ID,
         PLUGIN_VERSION: PLUGIN_VERSION,
@@ -23551,6 +23562,8 @@
         emoteSequenceMediaRecords: emoteSequenceMediaRecords,
         enterBlockbenchEmoteAnimateMode: enterBlockbenchEmoteAnimateMode,
         createBlockbenchEmotePreviewAdapter: createBlockbenchEmotePreviewAdapter,
+        emoteExportPreviewPlan: emoteExportPreviewPlan,
+        createEmoteExportPreviewSession: createEmoteExportPreviewSession,
         emoteSequenceGraphProjection: emoteSequenceGraphProjection,
         emoteCanvasScreenToGraph: emoteCanvasScreenToGraph,
         reorderEmoteWorkspacePanels: reorderEmoteWorkspacePanels,
@@ -23611,6 +23624,7 @@
         exportDiagnosticData: exportDiagnosticData,
         exportDiagnosticJson: exportDiagnosticJson,
         exportReviewComponent: exportReviewComponent,
+        openCreatorExportReview: openCreatorExportReview,
         defaultMinecraftDevelopmentRoot: defaultMinecraftDevelopmentRoot,
         directPreviewFileName: directPreviewFileName,
         mcpActionRequest: mcpActionRequest,
