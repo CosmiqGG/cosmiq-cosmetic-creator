@@ -21104,6 +21104,52 @@
                 });
             });
         }
+        function fitCamera() {
+            if (fitted) return;
+            if (typeof runtime.fitCamera === 'function') { runtime.fitCamera(preview, outliner); fitted = true; return; }
+            if (!three || !three.Box3 || !three.Vector3) throw new Error('Native camera framing is unavailable.');
+            const bounds = new three.Box3();
+            (outliner && outliner.elements || []).forEach(function (element) {
+                const mesh = element.mesh;
+                if (!mesh || !mesh.geometry || element.visibility === false ||
+                    element.type && element.type !== 'cube' && element.type !== 'mesh') return;
+                for (let parent = mesh; parent; parent = parent.parent) if (parent.visible === false) return;
+                const geometry = mesh.geometry;
+                const position = geometry.attributes && geometry.attributes.position;
+                const localBounds = position ? new three.Box3().setFromBufferAttribute(position) : geometry.boundingBox;
+                if (localBounds) bounds.union(localBounds.clone().applyMatrix4(mesh.matrixWorld));
+            });
+            const center = bounds.isEmpty() ? new three.Vector3(0, 12, 0) : bounds.getCenter(new three.Vector3());
+            const size = bounds.isEmpty() ? new three.Vector3(24, 24, 24) : bounds.getSize(new three.Vector3());
+            const camera = preview.camPers || preview.camera;
+            const aspect = Math.max(0.1, Number(camera.aspect) || 1);
+            const vertical = (Number(camera.fov) || 45) * Math.PI / 360;
+            // Fit projected box corners, not a bounding sphere: wide multiplayer
+            // formations should use horizontal FOV rather than waste vertical space.
+            const direction = new three.Vector3(0.35, 0.18, -1).normalize();
+            const right = new three.Vector3(direction.z, 0, -direction.x).normalize();
+            const up = new three.Vector3().crossVectors(direction, right);
+            const tanVertical = Math.tan(vertical);
+            const tanHorizontal = tanVertical * aspect;
+            let distance = 8;
+            [-1, 1].forEach(function (x) {
+                [-1, 1].forEach(function (y) {
+                    [-1, 1].forEach(function (z) {
+                        const corner = new three.Vector3(x * size.x / 2, y * size.y / 2, z * size.z / 2);
+                        distance = Math.max(distance, corner.dot(direction) + 1.15 * Math.max(
+                            Math.abs(corner.dot(right)) / tanHorizontal,
+                            Math.abs(corner.dot(up)) / tanVertical));
+                    });
+                });
+            });
+            camera.position.copy(center).add(direction.multiplyScalar(distance));
+            camera.near = Math.max(0.01, distance / 1000);
+            camera.far = Math.max(1000, distance * 10);
+            if (preview.controls && preview.controls.target) preview.controls.target.copy(center);
+            if (camera.lookAt) camera.lookAt(center);
+            if (camera.updateProjectionMatrix) camera.updateProjectionMatrix();
+            fitted = true;
+        }
         return {plan: plan, mount: function () { notify(); return false; },
             dispose: function () { disposed = true; notify(); }, getState: state,
             toggle: function () {}, restart: function () {}};
