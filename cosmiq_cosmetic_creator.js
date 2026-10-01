@@ -21197,6 +21197,30 @@
                 return false;
             }
         }
+        function tick(timestamp) {
+            frame = null;
+            if (disposed) return;
+            if (!sameProject() || host && host.isConnected === false) {
+                dispose('Preview closed because its project or dialog is no longer active.');
+                return;
+            }
+            const wasPlaying = playing;
+            if (playing && lastTime !== null) elapsed += Math.max(0, timestamp - lastTime) / 1000;
+            lastTime = timestamp;
+            // Looping lanes keep an uninterrupted clock; their native time getters
+            // wrap independently. Never reset a 2s clip at another actor's 3s boundary.
+            if (!plan.clips.some(function (clip) { return clip.loop === 'loop'; }) &&
+                elapsed >= plan.cycleSeconds) {
+                elapsed = plan.cycleSeconds;
+                playing = false;
+                if (wasPlaying) notify();
+            }
+            if (wasPlaying && (!playing || lastRenderTime === null || timestamp - lastRenderTime >= 1000 / 30)) {
+                lastRenderTime = timestamp;
+                if (!guardedRender()) return;
+            }
+            if (!disposed) frame = raf(tick);
+        }
         return {plan: plan, mount: function () { notify(); return false; },
             dispose: function () { disposed = true; notify(); }, getState: state,
             toggle: function () {}, restart: function () {}};
