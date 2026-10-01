@@ -21359,7 +21359,35 @@
                     previewMessage: 'Live 3D preview is unavailable in this environment.'
                 };
             },
+            mounted: function () {
+                if (candidate.kind !== PROJECT_KINDS.EMOTE) return;
+                const component = this;
+                this.$nextTick(function () {
+                    if (previewDisposed) return;
+                    const factory = options.createSession || createEmoteExportPreviewSession;
+                    const runtime = Object.assign({}, options.runtime, {onState: function (state) {
+                        component.previewAvailable = state.available;
+                        component.previewPending = false;
+                        component.previewPlaying = state.playing;
+                        component.previewMessage = state.message;
+                    }});
+                    try {
+                        previewSession = factory(candidate, runtime);
+                        previewSession.mount(component.$refs.emoteExportViewport);
+                    } catch (error) {
+                        disposePreview();
+                        component.previewAvailable = false;
+                        component.previewPending = false;
+                        component.previewPlaying = false;
+                        component.previewMessage = 'Live 3D preview is unavailable: ' +
+                            (error && error.message || 'native viewport failed');
+                    }
+                });
+            },
+            beforeDestroy: disposePreview,
             methods: {
+                togglePreview: function () { if (previewSession) previewSession.toggle(); },
+                restartPreview: function () { if (previewSession) previewSession.restart(); },
                 copyDiagnostic: function () {
                     const component = this;
                     copyTextToClipboard(exportDiagnosticJson(candidate)).then(function () {
@@ -21375,6 +21403,14 @@
                 '<div class="cosmiq-export-confirm">',
                 '  <h1>{{ heading }}</h1>',
                 '  <p>{{ description }}</p>',
+                candidate.kind !== PROJECT_KINDS.EMOTE ? '' :
+                    '<section class="cosmiq-emote-export-preview" aria-label="Emote live 3D preview">' +
+                    '<div ref="emoteExportViewport" class="cosmiq-emote-export-viewport" v-show="previewAvailable || previewPending"></div>' +
+                    '<p class="cosmiq-emote-export-status">{{ previewMessage }}</p>' +
+                    '<div v-if="previewAvailable" class="cosmiq-emote-export-controls">' +
+                    '<button type="button" @click="togglePreview">{{ previewPlaying ? "Pause" : "Play" }}</button>' +
+                    '<button type="button" @click="restartPreview">Restart</button></div>' +
+                    '<small>Representative authored clips together. Logic transitions, audio and particles are not simulated.</small></section>',
                 primaryVisual,
                 candidate.kind === PROJECT_KINDS.CAPE ? '' :
                     '  <span class="cosmiq-animation-detection">Animation detected automatically: ' +
@@ -22782,6 +22818,7 @@
     }
 
     function cleanup() {
+        Array.from(emoteExportPreviewSessions).forEach(function (session) { session.dispose(); });
         Array.from(nativePreviewEffectKeys).forEach(disposeNativePreviewRegistration);
         if (activeDialog) {
             activeDialog.delete();
