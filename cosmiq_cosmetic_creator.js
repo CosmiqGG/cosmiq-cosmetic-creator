@@ -21024,6 +21024,86 @@
         function state() { return {available: mounted && !disposed, playing: playing, message: message, timeSeconds: elapsed}; }
         function notify() { if (typeof runtime.onState === 'function') runtime.onState(state()); }
         function sameProject() { return getProject() === project; }
+        function dispose(reason) {
+            if (disposed) return;
+            disposed = true;
+            playing = false;
+            if (reason) message = reason;
+            if (frame !== null && caf) caf(frame);
+            frame = null;
+            if (observer) { try { observer.disconnect(); } catch (ignored) {} }
+            observer = null;
+            if (preview) {
+                const owned = preview;
+                preview = null;
+                try { if (owned.controls && owned.controls.dispose) owned.controls.dispose(); } catch (ignored) {}
+                try { if (owned.delete) owned.delete(); } catch (ignored) {}
+                if (sameProject() && PreviewClass && previousPreview &&
+                    (!Array.isArray(PreviewClass.all) || PreviewClass.all.includes(previousPreview))) {
+                    PreviewClass.selected = previousPreview;
+                }
+            }
+            emoteExportPreviewSessions.delete(session);
+            notify();
+        }
+        // Restore descriptors/identity, not JSON clones of live native classes.
+        function rememberProperty(restore, object, key) {
+            if (!object) return;
+            const descriptor = Object.getOwnPropertyDescriptor(object, key);
+            restore.push(function () {
+                if (descriptor) Object.defineProperty(object, key, descriptor);
+                else delete object[key];
+            });
+        }
+        function rememberRecord(restore, object, deep, seen) {
+            if (!object || typeof object !== 'object') return;
+            seen = seen || new Set();
+            if (seen.has(object)) return;
+            seen.add(object);
+            const descriptors = Object.getOwnPropertyDescriptors(object);
+            restore.push(function () {
+                Object.keys(object).forEach(function (key) { if (!Object.hasOwn(descriptors, key)) delete object[key]; });
+                Object.defineProperties(object, descriptors);
+            });
+            if (deep) Object.keys(descriptors).forEach(function (key) {
+                const value = descriptors[key].value;
+                if (value && (Array.isArray(value) || Object.getPrototypeOf(value) === Object.prototype ||
+                    Object.getPrototypeOf(value) === null)) rememberRecord(restore, value, true, seen);
+            });
+        }
+        function rememberScene(restore) {
+            if (!canvas || !canvas.scene || typeof canvas.scene.traverse !== 'function') return;
+            const buffers = new Set();
+            const outlines = new Set((outliner && outliner.elements || []).map(function (element) {
+                return element.mesh && element.mesh.outline;
+            }).filter(Boolean));
+            canvas.scene.traverse(function (object) {
+                ['position', 'quaternion', 'scale', 'rotation', 'matrix', 'matrixWorld', 'pre_rotation'].forEach(function (key) {
+                    rememberProperty(restore, object, key);
+                    const value = object[key];
+                    if (value && value.clone && value.copy) {
+                        const saved = value.clone();
+                        restore.push(function () { value.copy(saved); });
+                    }
+                });
+                ['visible', 'frustumCulled', 'matrixWorldNeedsUpdate'].forEach(function (key) {
+                    rememberProperty(restore, object, key);
+                });
+                if (object.type === 'armature_bone' || object.isTransformControls || object === transformer ||
+                    outlines.has(object) || object.name === 'outline_group' || object === canvas.outlines) {
+                    object.visible = false;
+                }
+                const attributes = object.geometry && object.geometry.attributes;
+                Object.keys(attributes || {}).forEach(function (key) {
+                    const attribute = attributes[key];
+                    const array = attribute && attribute.array;
+                    if (!array || !array.slice || buffers.has(array)) return;
+                    buffers.add(array);
+                    const saved = array.slice();
+                    restore.push(function () { array.set(saved); attribute.needsUpdate = true; });
+                });
+            });
+        }
         return {plan: plan, mount: function () { notify(); return false; },
             dispose: function () { disposed = true; notify(); }, getState: state,
             toggle: function () {}, restart: function () {}};
