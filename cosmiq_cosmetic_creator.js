@@ -21289,13 +21289,22 @@
         return session;
     }
 
-    function exportReviewComponent(candidate) {
+    function exportReviewComponent(candidate, previewOptions) {
+        const options = previewOptions || {};
+        let previewSession = null;
+        let previewDisposed = false;
+        function disposePreview() {
+            if (previewDisposed) return;
+            previewDisposed = true;
+            if (previewSession) previewSession.dispose();
+        }
+        if (typeof options.onDisposeReady === 'function') options.onDisposeReady(disposePreview);
         const anchorIds = detectedAccessoryAnchorIds(candidate);
         const attachmentLabels = anchorIds.map(function (anchorId) {
             return anchorById[anchorId] ? anchorById[anchorId].label : anchorId;
         });
         const metadata = candidate.sourceResult && candidate.sourceResult.metadata || {};
-        const animationMode = metadata.animationMode === ANIMATION_MODES.ANIMATED ? 'Animated' : 'Static';
+        let animationMode = metadata.animationMode === ANIMATION_MODES.ANIMATED ? 'Animated' : 'Static';
         let heading = 'Review ' + (candidate.kind === PROJECT_KINDS.EMOTE ? 'Emote' : 'Export');
         let description = 'Confirm the detected project before exporting.';
         let primaryVisual = '';
@@ -21306,7 +21315,30 @@
             description = attachmentLabels.length === 1
                 ? 'This accessory will attach to the highlighted body part.'
                 : 'Move all accessory geometry beneath one [Model bodypart] group before exporting.';
-            primaryVisual = minecraftAttachmentDiagram(anchorIds);
+            primaryVisual = minecraftAttachmentDiagram(anchorIds) +
+                '<p class="cosmiq-attachment-view">Front view &mdash; R / L are the player&#39;s sides.</p>';
+        } else if (candidate.kind === PROJECT_KINDS.EMOTE) {
+            // Ignore empty template lanes, and use V3 source bindings rather than the
+            // optional legacy review projection. Props are not player actors.
+            const clips = animationsWithPackageContent(Object.values(metadata.animationBindings || {}));
+            const modes = [
+                {id: 'once', label: 'Once'},
+                {id: 'loop', label: 'Loop'},
+                {id: 'hold', label: 'Hold Last Frame'}
+            ];
+            const detectedModes = modes.filter(function (mode) {
+                return clips.some(function (clip) { return clip.loop && clip.loop.mode === mode.id; });
+            }).map(function (mode) { return mode.label; });
+            const unknownMode = clips.some(function (clip) {
+                return !modes.some(function (mode) { return clip.loop && clip.loop.mode === mode.id; });
+            });
+            const loopLabel = clips.length === 0 ? 'No animated clips' : unknownMode ? 'Not detected'
+                : detectedModes.length === 1 ? detectedModes[0] : 'Mixed (' + detectedModes.join(', ') + ')';
+            const actorCount = Array.isArray(metadata.actors) ? metadata.actors.length : 'Not detected';
+            animationMode = clips.length > 0 ? 'Animated' : 'Static';
+            primaryVisual = '<div class="cosmiq-export-models cosmiq-emote-summary">' +
+                '<div><span>Clip loop mode</span><b>' + reviewText(loopLabel) + '</b></div>' +
+                '<div><span>Player actors</span><b>' + reviewText(actorCount) + '</b></div></div>';
         } else if (candidate.kind === PROJECT_KINDS.CAPE) {
             const cape = metadata.cape || {};
             heading = 'Cape Review';
@@ -21320,7 +21352,11 @@
                 return {
                     heading: heading,
                     description: description,
-                    copyStatus: ''
+                    copyStatus: '',
+                    previewAvailable: false,
+                    previewPending: true,
+                    previewPlaying: false,
+                    previewMessage: 'Live 3D preview is unavailable in this environment.'
                 };
             },
             methods: {
