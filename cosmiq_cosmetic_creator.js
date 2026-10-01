@@ -4360,7 +4360,11 @@
             '.cosmiq-export-models span,.cosmiq-export-review>p,.cosmiq-export-review li{color:var(--color-subtle_text,#aaa)}.cosmiq-export-review ul{margin:5px 0 8px;padding-left:23px}',
             '.cosmiq-export-ready,.cosmiq-export-warning{display:flex;align-items:center;gap:7px;padding:9px 11px;border-radius:4px}.cosmiq-export-ready{background:#213d32;color:#70e3aa!important}.cosmiq-export-warning{background:#512a33;color:#ff9bb1!important}.cosmiq-export-ready i,.cosmiq-export-warning i{font-size:19px}',
             '.cosmiq-export-confirm{padding:20px 22px;color:var(--color-text,#eee);text-align:center}.cosmiq-export-confirm h1{margin:0 0 5px;font-size:27px;font-weight:400}.cosmiq-export-confirm>p{margin:0 auto 14px;color:var(--color-subtle_text,#aaa)}',
-            '.cosmiq-attachment-diagram{display:block;width:210px;max-width:65%;margin:14px auto 12px}.cosmiq-attachment-diagram .part{fill:#434957;stroke:#858da1;stroke-width:4}.cosmiq-attachment-diagram .selected{fill:var(--color-accent,#f36b91);stroke:#fff;stroke-width:6;filter:drop-shadow(0 0 7px rgba(243,107,145,.72))}',
+            '.cosmiq-emote-summary{max-width:460px;margin:16px auto 20px;text-align:left}.cosmiq-emote-summary b{font-size:20px;overflow-wrap:anywhere}',
+            '.cosmiq-emote-export-preview{margin:14px auto;max-width:660px;border:1px solid var(--color-border,#343640);border-radius:6px;overflow:hidden;background:var(--color-ui,#23252d)}.cosmiq-emote-export-viewport{height:clamp(180px,30vh,280px);width:100%;overflow:hidden;pointer-events:none}.cosmiq-emote-export-viewport>.preview{width:100%;height:100%}.cosmiq-emote-export-status{margin:8px;font-size:12px;color:var(--color-subtle_text,#aaa)}.cosmiq-emote-export-controls{display:flex;justify-content:center;gap:8px;margin:8px}.cosmiq-emote-export-preview small{display:block;padding:0 10px 10px;font-size:11px;color:var(--color-subtle_text,#aaa)}',
+            '.cosmiq-emote-export-viewport .preview_menu,.cosmiq-emote-export-viewport .preview_label{display:none!important}',
+            '.cosmiq-attachment-diagram{display:block;width:210px;max-width:65%;margin:14px auto 12px}.cosmiq-attachment-diagram .part{fill:#434957;stroke:#858da1;stroke-width:4}.cosmiq-attachment-diagram .selected{fill:var(--color-accent,#f36b91);stroke:#fff;stroke-width:6;filter:drop-shadow(0 0 5px var(--color-accent,#f36b91))}',
+            '.cosmiq-attachment-diagram .rigid-marker{fill:none;stroke:var(--color-accent,#f36b91);stroke-width:4}.cosmiq-attachment-diagram .side-label{fill:var(--color-subtle_text,#aaa);font-size:14px;font-weight:600;text-anchor:middle}.cosmiq-export-confirm .cosmiq-attachment-view{font-size:12px;margin:0 0 10px}',
             '.cosmiq-animation-detection{display:inline-block;margin:0 0 15px;padding:5px 10px;border-radius:999px;background:var(--color-ui,#292c35);color:var(--color-subtle_text,#bbb);font-size:12px}',
             '.cosmiq-copy-diagnostic{display:inline-flex;align-items:center;gap:6px;margin:0 auto 17px;padding:8px 13px;border:1px solid var(--color-border,#4a4e5a);border-radius:5px;background:var(--color-button,#30333c);color:var(--color-text,#eee);cursor:pointer}.cosmiq-copy-diagnostic i{font-size:18px}.cosmiq-copy-status{min-height:18px;margin:-10px 0 12px!important;color:#70e3aa!important;font-size:12px}',
             '.cosmiq-export-advanced{border:1px solid var(--color-border,#3b3e48);border-radius:6px;background:var(--color-back,#17181d);text-align:left}.cosmiq-export-advanced>summary{padding:12px 14px;cursor:pointer;font-weight:500}.cosmiq-export-advanced[open]>summary{border-bottom:1px solid var(--color-border,#3b3e48)}',
@@ -20827,21 +20831,26 @@
             selected[canonicalAnchorId(anchorId)] = true;
         });
         function bodyPart(anchorId, tag, attributes) {
-            const className = selected[anchorId] ? 'part selected' : 'part';
+            const rigid = anchorById[anchorId] && anchorById[anchorId].rigid === true;
+            if (rigid && !selected[anchorId]) return '';
+            const className = (selected[anchorId] ? 'part selected' : 'part') +
+                (rigid ? ' rigid-marker' : '');
             return '<' + tag + ' class="' + className + '" data-anchor="' + anchorId + '" ' +
                 attributes + '></' + tag + '>';
         }
         return [
-            '<svg class="cosmiq-attachment-diagram" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 240 330" role="img" aria-label="Minecraft player attachment diagram">',
+            '<svg class="cosmiq-attachment-diagram" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 240 330" role="img" aria-label="Minecraft player attachment diagram, front view; player right is on the viewer left">',
             '<rect x="3" y="3" width="234" height="324" rx="18" fill="#20232b" stroke="#343946" stroke-width="4"/>',
-            bodyPart('cosmiq:player/hitbox', 'rect', 'x="66" y="14" width="108" height="300" rx="8" fill="none"'),
-            bodyPart('cosmiq:player/root', 'circle', 'cx="120" cy="310" r="13"'),
             bodyPart('cosmiq:player/head', 'rect', 'x="80" y="22" width="80" height="80" rx="5"'),
             bodyPart('cosmiq:player/torso', 'rect', 'x="75" y="108" width="90" height="108" rx="4"'),
             bodyPart('cosmiq:player/right_arm', 'rect', 'x="29" y="108" width="40" height="120" rx="4"'),
             bodyPart('cosmiq:player/left_arm', 'rect', 'x="171" y="108" width="40" height="120" rx="4"'),
             bodyPart('cosmiq:player/right_leg', 'rect', 'x="75" y="222" width="42" height="88" rx="4"'),
             bodyPart('cosmiq:player/left_leg', 'rect', 'x="123" y="222" width="42" height="88" rx="4"'),
+            bodyPart('cosmiq:player/hitbox', 'rect', 'x="21" y="14" width="198" height="304" rx="8"'),
+            bodyPart('cosmiq:player/root', 'circle', 'cx="120" cy="317" r="8"'),
+            '<text class="side-label" x="49" y="95" aria-label="Player right">R</text>',
+            '<text class="side-label" x="191" y="95" aria-label="Player left">L</text>',
             '</svg>'
         ].join('');
     }
