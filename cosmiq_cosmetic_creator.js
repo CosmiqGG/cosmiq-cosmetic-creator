@@ -688,26 +688,32 @@
         }),
         Object.freeze({
             key: 'WR', modelGroup: '[Model WR]', bodyPartGroup: 'Right Arm Wide',
+            bodyPartUuid: '980b0072-8cb0-143b-2476-e09e311cfce7',
             label: 'Right Arm', anchorId: 'cosmiq:player/right_arm', modelVariant: 'wide'
         }),
         Object.freeze({
             key: 'WL', modelGroup: '[Model WL]', bodyPartGroup: 'Left Arm Wide',
+            bodyPartUuid: '2fd208e0-d2c3-3898-4cc0-5e291dae1f95',
             label: 'Left Arm', anchorId: 'cosmiq:player/left_arm', modelVariant: 'wide'
         }),
         Object.freeze({
             key: 'SR', modelGroup: '[Model SR]', bodyPartGroup: 'Right Arm Slim',
+            bodyPartUuid: '30fc803a-b9eb-350e-8c68-c113222faf65',
             label: 'Right Arm', anchorId: 'cosmiq:player/right_arm', modelVariant: 'slim'
         }),
         Object.freeze({
             key: 'SL', modelGroup: '[Model SL]', bodyPartGroup: 'Left Arm Slim',
+            bodyPartUuid: 'd05bf71f-53b0-02b5-0173-5310cc14ab56',
             label: 'Left Arm', anchorId: 'cosmiq:player/left_arm', modelVariant: 'slim'
         }),
         Object.freeze({
             key: 'RL', modelGroup: '[Model RL]', bodyPartGroup: 'Right Leg',
+            bodyPartUuid: 'e4313647-8759-d412-46b5-6738fad98213',
             label: 'Right Leg', anchorId: 'cosmiq:player/right_leg', modelVariant: 'universal'
         }),
         Object.freeze({
             key: 'LL', modelGroup: '[Model LL]', bodyPartGroup: 'Left Leg',
+            bodyPartUuid: 'ca206052-836f-588f-eb6a-9580ad3e6322',
             label: 'Left Leg', anchorId: 'cosmiq:player/left_leg', modelVariant: 'universal'
         })
     ]);
@@ -9737,14 +9743,21 @@
         });
     }
 
-    function anchorIdForAuthoredOrigin(anchorId, origin) {
-        const canonicalId = canonicalAnchorId(anchorId);
+    function normalizedPlayerAnchorId(node) {
+        const canonicalId = canonicalAnchorId(node.anchorId);
+        const point = TEMPLATE_ATTACHMENT_POINTS.find(function (candidate) {
+            return candidate.bodyPartUuid && candidate.bodyPartUuid === node.uuid;
+        });
+        // Stable template IDs repair previously swapped arms and legs. Custom legacy leg
+        // anchors still use the position migration below; custom typed arms keep their side.
+        if (point) return point.anchorId;
+        if (canonicalId === 'cosmiq:player/left_arm' || canonicalId === 'cosmiq:player/right_arm') {
+            return canonicalId;
+        }
+        const origin = node.origin;
         if (!Array.isArray(origin) || !isKnownAnchor(canonicalId)) return canonicalId;
         const x = Number(origin[0]);
         if (!Number.isFinite(x) || Math.abs(x) <= 0.0001) return canonicalId;
-        if (canonicalId === 'cosmiq:player/left_arm' || canonicalId === 'cosmiq:player/right_arm') {
-            return x > 0 ? 'cosmiq:player/left_arm' : 'cosmiq:player/right_arm';
-        }
         if (canonicalId === 'cosmiq:player/left_leg' || canonicalId === 'cosmiq:player/right_leg') {
             return x > 0 ? 'cosmiq:player/left_leg' : 'cosmiq:player/right_leg';
         }
@@ -9757,7 +9770,7 @@
             if (effectiveRole(node) !== ROLES.ANCHOR && !node.anchorId) return;
             const previousAnchorId = canonicalAnchorId(node.anchorId);
             if (!isKnownAnchor(previousAnchorId)) return;
-            const anchorId = anchorIdForAuthoredOrigin(previousAnchorId, node.origin);
+            const anchorId = normalizedPlayerAnchorId(node);
             const origin = anchorById[anchorId].origin.slice();
             if (anchorId === previousAnchorId && sameAnchorOrigin(node.origin, origin)) return;
             changes.push({
