@@ -22149,7 +22149,55 @@
             }
             return null;
         }
-        throw new Error('The internal conversion adapter is not available yet.');
+        const wrapper = {uuid: newId(), name: name, origin: [0, 0, 0], rotation: [0, 0, 0],
+            export: true, visibility: true, cosmiq_role: kind === PROJECT_KINDS.EMOTE ? ROLES.OBJECT_ACTOR : ROLES.AUTHORING};
+        let target;
+        let sideMode = 'unconfigured';
+        if (kind === PROJECT_KINDS.COSMETIC) {
+            const point = TEMPLATE_ATTACHMENT_POINTS.find(function (candidate) {
+                return candidate.anchorId === options.anchorId &&
+                    (candidate.modelVariant === 'universal' || candidate.modelVariant === options.visibleBody);
+            });
+            if (!point) throw new Error('Choose a supported body attachment.');
+            if (/_arm$/.test(point.anchorId)) {
+                if (options.armSideMode !== 'shared' && options.armSideMode !== 'separate') {
+                    throw new Error('Choose whether the same model is intended for the right and left arms.');
+                }
+                sideMode = options.armSideMode;
+            }
+            target = baseTemplateGroup(incoming, point.modelGroup);
+        } else {
+            const scene = incoming.groups.find(function (group) { return group.cosmiq_role === ROLES.EMOTE_SCENE; });
+            target = {uuid: newId(), name: 'Props', origin: [0, 0, 0], rotation: [0, 0, 0],
+                export: false, visibility: true, cosmiq_role: ROLES.PROPS_ROOT};
+            incoming.groups.push(target);
+            branch(scene.uuid, incoming.outliner).children.push({uuid: target.uuid, children: []});
+            incoming.cosmiq_emote_contains_props = true;
+        }
+        const targetBranch = branch(target.uuid, incoming.outliner);
+        if (!targetBranch) throw new Error('The template attachment is unavailable.');
+        targetBranch.children.push({uuid: wrapper.uuid, children: []});
+        incoming.groups.push(wrapper);
+        incoming.textures.forEach(function (texture) {
+            texture.uv_width = texture.uv_width || incoming.resolution.width;
+            texture.uv_height = texture.uv_height || incoming.resolution.height;
+        });
+        incoming.elements.forEach(function (element) {
+            if (element.type === 'cube' && element.box_uv === undefined) element.box_uv = !!incoming.meta.box_uv;
+            Object.values(element.faces || {}).forEach(function (face) {
+                if (typeof face.texture === 'number') {
+                    const texture = incoming.textures[face.texture];
+                    if (!texture) throw new Error('Invalid template texture reference.');
+                    face.texture = texture.uuid;
+                }
+            });
+        });
+        const projectFields = {name: incoming.name, cosmiq_arm_side_mode: sideMode};
+        Object.keys(incoming).filter(function (key) { return key.indexOf('cosmiq_') === 0; })
+            .forEach(function (key) { projectFields[key] = incoming[key]; });
+        return {elements: incoming.elements, groups: incoming.groups, textures: incoming.textures,
+            animations: incoming.animations || [], outliner: incoming.outliner, wrapperUuid: wrapper.uuid,
+            targetUuid: target.uuid, projectFields: projectFields};
     }
 
     function applyAccessoryMerge(plan) {
