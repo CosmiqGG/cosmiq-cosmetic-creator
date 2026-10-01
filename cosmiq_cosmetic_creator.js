@@ -20986,6 +20986,49 @@
     const emoteExportPreviewSessions = new Set();
     let emoteExportPreviewSerial = 0;
 
+    function createEmoteExportPreviewSession(candidate, runtimeOptions) {
+        const runtime = runtimeOptions || {};
+        const bb = runtime.Blockbench !== undefined ? runtime.Blockbench : typeof Blockbench !== 'undefined' ? Blockbench : null;
+        const animationApi = runtime.Animation !== undefined ? runtime.Animation : bb && bb.Animation ||
+            (typeof Animation !== 'undefined' && Array.isArray(Animation.all) ? Animation : null);
+        const timeline = runtime.Timeline !== undefined ? runtime.Timeline : typeof Timeline !== 'undefined' ? Timeline : null;
+        const animator = runtime.Animator !== undefined ? runtime.Animator : typeof Animator !== 'undefined' ? Animator : null;
+        const PreviewClass = runtime.Preview !== undefined ? runtime.Preview : typeof Preview !== 'undefined' ? Preview : null;
+        const canvas = runtime.Canvas !== undefined ? runtime.Canvas : typeof Canvas !== 'undefined' ? Canvas : null;
+        const outliner = runtime.Outliner !== undefined ? runtime.Outliner : typeof Outliner !== 'undefined' ? Outliner : null;
+        const transformer = runtime.Transformer !== undefined ? runtime.Transformer :
+            typeof Transformer !== 'undefined' ? Transformer : null;
+        const three = runtime.THREE !== undefined ? runtime.THREE : typeof THREE !== 'undefined' ? THREE : null;
+        const Observer = runtime.ResizeObserver !== undefined ? runtime.ResizeObserver :
+            typeof ResizeObserver !== 'undefined' ? ResizeObserver : null;
+        const raf = runtime.requestAnimationFrame || (typeof requestAnimationFrame === 'function' ? requestAnimationFrame : null);
+        const caf = runtime.cancelAnimationFrame || (typeof cancelAnimationFrame === 'function' ? cancelAnimationFrame : null);
+        const getProject = runtime.getProject || function () { return typeof Project !== 'undefined' ? Project : null; };
+        const project = getProject();
+        const plan = emoteExportPreviewPlan(candidate.sourceResult && candidate.sourceResult.metadata,
+            animationApi && animationApi.all, animationApi && animationApi.selected && animationApi.selected.uuid);
+        let preview = null;
+        let nativeRender = null;
+        let previousPreview = null;
+        let observer = null;
+        let host = null;
+        let frame = null;
+        let lastTime = null;
+        let lastRenderTime = null;
+        let elapsed = 0;
+        let mounted = false;
+        let playing = false;
+        let disposed = false;
+        let fitted = false;
+        let message = 'Live 3D preview is unavailable in this environment.';
+        function state() { return {available: mounted && !disposed, playing: playing, message: message, timeSeconds: elapsed}; }
+        function notify() { if (typeof runtime.onState === 'function') runtime.onState(state()); }
+        function sameProject() { return getProject() === project; }
+        return {plan: plan, mount: function () { notify(); return false; },
+            dispose: function () { disposed = true; notify(); }, getState: state,
+            toggle: function () {}, restart: function () {}};
+    }
+
     function exportReviewComponent(candidate) {
         const anchorIds = detectedAccessoryAnchorIds(candidate);
         const attachmentLabels = anchorIds.map(function (anchorId) {
